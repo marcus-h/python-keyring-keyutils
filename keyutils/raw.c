@@ -118,6 +118,7 @@ static PyObject *raw_keyctl_read_alloc(PyObject *self, PyObject *args) {
         return NULL;
     }
     obj = PyByteArray_FromStringAndSize(payload, payload_len);
+    explicit_bzero(payload, payload_len);
     free(payload);
     return obj;
 }
