@@ -685,7 +685,7 @@ class Bitstring:
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print("usage: {} <filename>".format(sys.args[0]), file=sys.stderr)
+        print("usage: {} <filename>".format(sys.argv[0]), file=sys.stderr)
         sys.exit(1)
     with open(sys.argv[1], 'rb') as f:
         dec = Decoder(f)
