@@ -1,12 +1,10 @@
-import unittest
-
-from keyring.tests.test_backend import BackendBasicTests
+from keyring.testing.backend import BackendBasicTests
 
 from keyutils.backend import KeyutilsKeyringBackend
 from keyutils.keys import process_keyring
 
 
-class TestKeyutilsKeyringBackend(BackendBasicTests, unittest.TestCase):
+class TestKeyutilsKeyringBackend(BackendBasicTests):
     def init_keyring(self):
         # The 'user' key type does not support an empty payload (== password),
         # This workaround/hack pacifies the testsuite (it uses an empty
@@ -41,12 +39,12 @@ class TestKeyutilsKeyringBackend(BackendBasicTests, unittest.TestCase):
         service = b'ser\xffvice'
         username = b'user\xdcname'
         password = b'\xdc\0\xff\0pass\x7f'
-        self.assertIsNone(keyring.get_password(service, username))
+        assert keyring.get_password(service, username) is None
         keyring.set_password(service, username, password)
         actual_password = keyring.get_password(service, username)
-        self.assertEqual(password, actual_password)
+        assert password == actual_password
         # zap is possible
         plen = len(actual_password)
         for i in range(plen):
             actual_password[i] = 0
-        self.assertEqual(bytes(plen), actual_password)
+        assert bytes(plen) == actual_password
