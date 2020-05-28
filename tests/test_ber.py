@@ -7,9 +7,6 @@ from keyutils.ber import (Encoder, Decoder, Bitstring, Tag,
 
 
 class TestBer(unittest.TestCase):
-    def setUp(self):
-        self._stream = BytesIO()
-
     def _assert_tag(self, *tag):
         bio = BytesIO()
         enc = Encoder(bio)
