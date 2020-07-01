@@ -12,7 +12,7 @@ class KeyutilsKeyringBackend(KeyringBackend):
     def __init__(self, keyring_name='python-keyring-keyutils',
                  parent_keyring=session_keyring, key_type='user',
                  payload_encoding='utf-8'):
-        super(KeyutilsKeyringBackend, self).__init__()
+        super().__init__()
         self._keyring_name = keyring_name
         self._parent_keyring = parent_keyring
         self._key_type = key_type

@@ -124,7 +124,7 @@ class SequenceEncodingMapper:
 
 class Encoder(Base):
     def __init__(self, writable, *args, **kwargs):
-        super(Encoder, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._writables = []
         self._push_writable(writable)
 
@@ -345,21 +345,21 @@ class SequenceDecodingBuilder:
 
 class SequenceDecodingPrintBuilder(SequenceDecodingBuilder):
     def __init__(self, *args, **kwargs):
-        super(SequenceDecodingPrintBuilder, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._indent = 0
 
     def begin_sequence(self):
-        super(SequenceDecodingPrintBuilder, self).begin_sequence()
+        super().begin_sequence()
         self._print('[')
         self._indent += 1
 
     def end_sequence(self):
-        super(SequenceDecodingPrintBuilder, self).end_sequence()
+        super().end_sequence()
         self._indent -= 1
         self._print(']')
 
     def handle(self, tag):
-        value = super(SequenceDecodingPrintBuilder, self).handle(tag)
+        value = super().handle(tag)
         self._print(value)
         return value
 
@@ -394,7 +394,7 @@ class LimitedReader:
 
 class Decoder(Base):
     def __init__(self, readable, *args, **kwargs):
-        super(Decoder, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._readers = [LimitedReader(readable)]
         self._peeked_tag = None
 

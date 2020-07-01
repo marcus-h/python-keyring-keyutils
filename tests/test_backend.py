@@ -13,8 +13,7 @@ class TestKeyutilsKeyringBackend(BackendBasicTests):
             empty_payload_substitute = '\0\0\0empty payload substitute\0\0\0'
 
             def get_password(self, *args, **kwargs):
-                password = super(self.__class__, self).get_password(*args,
-                                                                    **kwargs)
+                password = super().get_password(*args, **kwargs)
                 if password == self.empty_payload_substitute:
                     return ''
                 return password
@@ -22,9 +21,7 @@ class TestKeyutilsKeyringBackend(BackendBasicTests):
             def set_password(self, service, username, password):
                 if not password:
                     password = self.empty_payload_substitute
-                return super(self.__class__, self).set_password(service,
-                                                                username,
-                                                                password)
+                return super().set_password(service, username, password)
 
         # use the process keyring so that we do not mess the "global"
         # session keyring (alternatively, we could also join to new
