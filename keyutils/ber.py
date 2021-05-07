@@ -422,7 +422,7 @@ class Decoder(Base):
         if (octet & 31) != 31:
             tag_number = octet & 31
             if tag_number > 30:
-                raise DecodingError("illegal tag octet: ".format(octet))
+                raise DecodingError("illegal tag octet: {}".format(octet))
             return tag_class, tag_number, constructed
         tag_number = 0
         while True:
