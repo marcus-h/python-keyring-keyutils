@@ -45,6 +45,10 @@ class TestBer(unittest.TestCase):
         dec_meth = getattr(dec, "read_{}".format(what))
         actual_data = dec_meth()
         self.assertEqual(data, actual_data)
+        self._assert_empty_bio(bio)
+
+    def _assert_empty_bio(self, bio):
+        self.assertEqual(b'', bio.read())
 
     def _assert_length(self, length):
         self._assert_function('length', length)
