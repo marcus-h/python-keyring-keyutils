@@ -2,7 +2,7 @@ import unittest
 import os
 from io import BytesIO
 
-from keyutils.ber import (Encoder, Decoder, Bitstring, Tag,
+from keyutils.ber import (Encoder, Decoder, DecodingError, Bitstring, Tag,
                           SequenceDecodingBuilder)
 
 
@@ -216,6 +216,56 @@ class TestBer(unittest.TestCase):
         enc = Encoder(bio)
         enc.write_bitstring(bytearray([0, 0, 0]))
         self.assertEqual(b'\x03\x01\x00', bio.getvalue())
+
+    def test_bitstring_no_unused_bits(self):
+        """Decode a non-empty bitstring with no unused bits"""
+        bio = BytesIO(
+            b'\x03\x04\x00\x00\x00\xff'
+        )
+        dec = Decoder(bio)
+        raw = bytearray([0x00, 0x00, 0xFF])
+        self.assertEqual(raw, dec.read_bitstring())
+        bio = BytesIO(
+            b'\x03\x04\x00\x00\x00\x00'
+        )
+        dec = Decoder(bio)
+        raw = bytearray([0x00, 0x00, 0x00])
+        self.assertEqual(raw, dec.read_bitstring())
+
+    def test_bitstring_max_unused_bits(self):
+        """Decode a non-empty bitstring with seven unused bits"""
+        bio = BytesIO(
+            b'\x03\x06\x07\x00\x00\x01\x00\x00'
+        )
+        dec = Decoder(bio)
+        raw = bytearray([0x00, 0x00, 0x01, 0x00, 0x00])
+        self.assertEqual(raw, dec.read_bitstring())
+
+    def test_bitstring_unused_bits_errors(self):
+        """Error out on illegal unused bit values"""
+        # 7 bits should be unused but the last bit is set
+        bio = BytesIO(
+            b'\x03\x06\x07\x00\x00\x01\x00\x01'
+        )
+        dec = Decoder(bio)
+        with self.assertRaises(DecodingError):
+            dec.read_bitstring()
+
+        # 7 bits should be unused but bit 4 (from lsb to msb) is set
+        bio = BytesIO(
+            b'\x03\x06\x07\x00\x00\x01\x00\x10'
+        )
+        dec = Decoder(bio)
+        with self.assertRaises(DecodingError):
+            dec.read_bitstring()
+
+        # the last 3 bits should be unset
+        bio = BytesIO(
+            b'\x03\x06\x03\x00\x00\x01\x00\x14'
+        )
+        dec = Decoder(bio)
+        with self.assertRaises(DecodingError):
+            dec.read_bitstring()
 
     def test_bitstring_constructed(self):
         """Decode a bitstring (constructed)"""

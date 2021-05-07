@@ -101,8 +101,6 @@ class Base:
             if (byte >> i) & 1:
                 break
             unused += 1
-        if unused == 8:
-            raise RuntimeError('found 8 unused bits')
         return unused
 
 
@@ -221,14 +219,16 @@ class Encoder(Base):
         self._write_integer(Tag.ENUMERATED, num)
 
     def write_bitstring(self, raw):
-        # trailing zeros are not allowed because otherwise we would have
-        # 8 unused bits (which is not allowed (see X.690 8.6.2.2))
+        # This behavior is a bit debatable; if the underlying bitstring
+        # type has a NamedBitList, this behavior is OK (see X.680 22.7).
+        # Note: trailing zeros are perfectly fine! (see also X.690 8.6.2.2)
         while raw and not raw[-1]:
             raw.pop()
         # for now, we just support the length restricted, primitive encoding
         self.write_tag(*Tag.BITSTRING_PRIMITIVE)
         length = 1 + len(raw)
         self.write_length(length)
+        # due to the removal of trailing zeros, we have 0 <= unused <= 7
         unused = self._unused_bits(raw[-1]) if raw else 0
         self._pack("{}B".format(length), unused, *raw)
 
@@ -520,11 +520,11 @@ class Decoder(Base):
         if not octets:
             return bytearray()
         unused_act = self._unused_bits(octets[-1])
-        if unused != unused_act:
-            msg = "unused bit mismatch: {} vs. {}".format(unused, unused_act)
+        if unused > unused_act:
+            msg = "unused bit violation: {} vs. {}".format(unused, unused_act)
             raise DecodingError(msg)
-        # note: octets has no trailing zeros (otherwise we would have 8 unused
-        # bits => self._unused_bits raises an exception)
+        # note that octets can have trailing zeros (it is perfectly valid if it
+        # consists only of zeros)
         return bytearray(octets)
 
     def read_bitstring(self):
