@@ -280,9 +280,13 @@ class TestBer(unittest.TestCase):
         bio = BytesIO(
             # noqa: E131
             b'\x23\x80'
+                # noqa: E131
                 b'\x23\x80'
+                    # noqa: E131
                     b'\x23\x80'
+                        # noqa: E131
                         b'\x23\x80'
+                            # noqa: E131
                             b'\x03\x01\x00'             # empty bitstring
                             b'\x03\x04\01\xAF\x00\x3E'
                             b'\x03\x02\x00\xFF'
@@ -323,13 +327,16 @@ class TestBer(unittest.TestCase):
         bio = BytesIO(
             # noqa: E131
             b'\x24\x80'
+                # noqa: E131
                 b'\x24\x80'
                 b'\x04\x0A0123456789'
                 b'\x00\x00'
                 b'\x24\x80'
+                    # noqa: E131
                     b'\x04\x03foo'
                     b'\x04\x06\x03\x04\x02\xEA\xAF\x4C'
                     b'\x24\x80'
+                        # noqa: E131
                         b'\x04\x05abcde'
                         b'\x24\x80'
                         b'\x00\x00'
@@ -373,12 +380,15 @@ class TestBer(unittest.TestCase):
         self.assertEqual(
             # noqa: E131
             b'\x30\x1A'
+                # noqa: E131
                 b'\x04\x03foo'
                 b'\x30\x00'
                 b'\x30\x0F'
+                    # noqa: E131
                     b'\x01\x01\xFF'
                     b'\x30\x00'
                     b'\x30\x08'
+                        # noqa: E131
                         b'\x05\x00'
                         b'\x01\x01\x00'
                         b'\x04\x01x'
@@ -392,11 +402,15 @@ class TestBer(unittest.TestCase):
         bio = BytesIO(
             # noqa: E131
             b'\x30\x80'
+                # noqa: E131
                 b'\x30\x0F'
+                    # noqa: E131
                     b'\x30\x0D'
+                        # noqa: E131
                         b'\x05\x00'
                         b'\x04\x03foo'
                         b'\x30\x80'
+                            # noqa: E131
                             b'\x05\x00'
                         b'\x00\x00'
             b'\x00\x00'
@@ -434,11 +448,15 @@ class TestBer(unittest.TestCase):
         bio = BytesIO(
             # noqa: E131
             b'\x30\x80'
+                # noqa: E131
                 b'\x30\x0F'
+                    # noqa: E131
                     b'\x30\x0D'
+                        # noqa: E131
                         b'\x05\x00'
                         b'\x04\x03foo'
                         b'\x30\x80'
+                            # noqa: E131
                             b'\x05\x00'
                         b'\x00\x00'
             b'\x00\x00'
@@ -450,11 +468,15 @@ class TestBer(unittest.TestCase):
         expected_trace = [
             # noqa: E131
             '[',
+                # noqa: E131
                 '[',
+                    # noqa: E131
                     '[',
+                        # noqa: E131
                         (Tag.NULL, None),
                         (Tag.OCTETSTRING_PRIMITIVE, b'foo'),
                         '[',
+                            # noqa: E131
                             (Tag.NULL, None),
                         ']',
                     ']',
