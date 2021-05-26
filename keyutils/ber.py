@@ -626,15 +626,15 @@ class Decoder(Base):
                 reader = self._push_reader(length)
             tag_primitive = Tag.OCTETSTRING_PRIMITIVE
             tag_constructed = Tag.OCTETSTRING_CONSTRUCTED
-        data = self._read_raw_octets(tag_primitive, tag_constructed,
-                                     level=level)
+        raw = self._read_raw_octets(tag_primitive, tag_constructed,
+                                    level=level)
         if reader is not None:
             while not reader.is_eof():
                 # in this case, level is always 0
-                tmp = self._read_raw_octets(tag_primitive, tag_constructed)
-                data.extend(tmp)
+                data = self._read_raw_octets(tag_primitive, tag_constructed)
+                raw.extend(data)
             self._pop_reader()
-        return data
+        return raw
 
     def read_utf8string(self):
         data = self._read_raw_string(Tag.UTF8STRING_PRIMITIVE,
