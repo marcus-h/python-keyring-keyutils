@@ -623,6 +623,35 @@ class TestBer(unittest.TestCase):
         self.assertEqual('b', dec.read_utf8string())
         self.assertEqual('c', dec.read_utf8string())
 
+    def _assert_utctime(self, value):
+        self._assert_function('utctime', value)
+
+    def test_utctime(self):
+        """Encode and decode utctime values"""
+        self._assert_utctime('920622123421Z')
+        self._assert_utctime('210526000000Z')
+        # invalid dates are supported (february does not have 31 days)
+        self._assert_utctime('210231000000Z')
+        bio = BytesIO(b'\x17\x0D001231235959Z')
+        dec = Decoder(bio)
+        self.assertEqual('001231235959Z', dec.read_utctime())
+        # encode
+        bio = BytesIO()
+        enc = Encoder(bio)
+        enc.write_utctime('990101000000Z')
+        self.assertEqual(b'\x17\x0D990101000000Z', bio.getvalue())
+
+    def test_utctime_errors(self):
+        """Encode valid but unsupported utctime values"""
+        bio = BytesIO()
+        enc = Encoder(bio)
+        data = '8201020700-0500'
+        self.assertTrue(enc._is_utctime(data))
+        with self.assertRaises(ValueError):
+            enc.write_utctime(data)
+        with self.assertRaises(ValueError):
+            enc.write_utctime('9901010000Z')
+
 
 if __name__ == '__main__':
     unittest.main()

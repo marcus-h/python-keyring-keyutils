@@ -89,6 +89,8 @@ class Tag:
     UTF8STRING_CONSTRUCTED = (0, 12, True)
     PRINTABLESTRING_PRIMITIVE = (0, 19, False)
     PRINTABLESTRING_CONSTRUCTED = (0, 19, True)
+    UTCTIME_PRIMITIVE = (0, 23, False)
+    UTCTIME_CONSTRUCTED = (0, 23, True)
     NULL = (0, 5, False)
     SEQUENCE = (0, 16, True)
     OID = (0, 6, False)
@@ -115,6 +117,37 @@ class Base:
 
     def _is_printablestring(self, data):
         return self._printablestring_re.search(data) is not None
+
+    # YYMMDDhhmm(ss) Z or time differential
+    _utctime_re = re.compile(
+        rb'^(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)?(Z|([+-])(\d\d)(\d\d))\Z')
+
+    def _is_utctime(self, value):
+        def _is_valid_hour(hour):
+            return 0 <= hour and hour <= 23
+
+        def _is_valid_minute(minute):
+            return 0 <= minute and minute <= 59
+
+        mo = self._utctime_re.search(value.encode('ascii'))
+        if mo is None:
+            return None
+        nums = (d if d is None or d in (b'Z', b'+', b'-') else int(d)
+                for d in mo.groups())
+        yy, mm, dd, hh, minute, ss, utc, diff_op, diff_hh, diff_mm = nums
+        if mm <= 0 or mm > 12:
+            return False
+        elif dd <= 0 or dd > 31:
+            return False
+        elif not _is_valid_hour(hh):
+            return False
+        elif not _is_valid_minute(minute):
+            return False
+        elif utc == b'Z':
+            # no time differential specified
+            return True
+        # ok, we got a time differential
+        return _is_valid_hour(diff_hh) and _is_valid_minute(diff_mm)
 
 
 class SequenceEncodingMapper:
@@ -252,21 +285,29 @@ class Encoder(Base):
         self.write_length(length)
         self._pack("{}B".format(length), *raw)
 
-    def write_utf8string(self, value):
-        self.write_tag(*Tag.UTF8STRING_PRIMITIVE)
-        raw = value.encode('utf-8')
+    def _write_string(self, tag, value, encoding):
+        self.write_tag(*tag)
+        raw = value.encode(encoding)
         length = len(raw)
         self.write_length(length)
         self._pack("{}B".format(length), *raw)
 
+    def write_utf8string(self, value):
+        self._write_string(Tag.UTF8STRING_PRIMITIVE, value, 'utf-8')
+
     def write_printablestring(self, value):
         if not self._is_printablestring(value):
             raise ValueError("{} is not a printable string".format(value))
-        self.write_tag(*Tag.PRINTABLESTRING_PRIMITIVE)
-        raw = value.encode('ascii')
-        length = len(raw)
-        self.write_length(length)
-        self._pack("{}B".format(length), *raw)
+        self._write_string(Tag.PRINTABLESTRING_PRIMITIVE, value, 'ascii')
+
+    def write_utctime(self, value):
+        if not self._is_utctime(value):
+            raise ValueError("invalid utctime: {}".format(value))
+        elif value[-1] != 'Z':
+            raise ValueError('a time differential is not (yet) supported')
+        elif len(value) != 13:
+            raise ValueError('full format (including seconds) required')
+        self._write_string(Tag.UTCTIME_PRIMITIVE, value, 'ascii')
 
     def write_null(self, value=None):
         if value is not None:
@@ -606,6 +647,14 @@ class Decoder(Base):
         data = data.decode('ascii')
         if not self._is_printablestring(data):
             raise DecodingError("no printable string: {}".format(data))
+        return data
+
+    def read_utctime(self):
+        data = self._read_raw_string(Tag.UTCTIME_PRIMITIVE,
+                                     Tag.UTCTIME_CONSTRUCTED)
+        data = data.decode('ascii')
+        if not self._is_utctime(data):
+            raise DecodingError("no utctime: {}".format(data))
         return data
 
     def read_null(self):
