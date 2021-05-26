@@ -505,6 +505,102 @@ class TestBer(unittest.TestCase):
         enc.write_oid([2, 999, 3])
         self.assertEqual(b'\x06\x03\x88\x37\x03', bio.getvalue())
 
+    def _assert_printablestring(self, value):
+        self._assert_function('printablestring', value)
+
+    def test_printablestring(self):
+        """Encode and decode printable string values"""
+        self._assert_printablestring('')
+        self._assert_printablestring('foo bar 1337')
+        self._assert_printablestring('Aa09 \'()+,-./:=?')
+        # The following examples are adopted from X.690 (see around 8.23.6)
+        # primitive form
+        bio = BytesIO(b'\x13\x05\x4A\x6F\x6E\x65\x73')
+        dec = Decoder(bio)
+        self.assertEqual('Jones', dec.read_printablestring())
+        # constructor form, definite length
+        bio = BytesIO(
+            # noqa: E131
+            b'\x33\x09'
+                # noqa: E131
+                b'\x04\x03\x4A\x6F\x6E'
+                b'\x04\x02\x65\x73'
+        )
+        dec = Decoder(bio)
+        self.assertEqual('Jones', dec.read_printablestring())
+        # constructor form, indefinite length
+        bio = BytesIO(
+            # noqa: E131
+            b'\x33\x80'
+                # noqa: E131
+                b'\x04\x03\x4A\x6F\x6E'
+                b'\x04\x02\x65\x73'
+            b'\x00\x00'
+        )
+        dec = Decoder(bio)
+        self.assertEqual('Jones', dec.read_printablestring())
+        # test encoding
+        bio = BytesIO()
+        enc = Encoder(bio)
+        enc.write_printablestring('Fo0')
+        self.assertEqual(b'\x13\x03\x46\x6F\x30', bio.getvalue())
+
+    def test_printablestring_errors(self):
+        """Try to encode/decode non-printable strings"""
+        # newline '\n' is not allowed
+        bio = BytesIO(b'\x13\x01\x0A')
+        dec = Decoder(bio)
+        with self.assertRaises(DecodingError):
+            print(dec.read_printablestring().encode())
+        # encode
+        bio = BytesIO()
+        enc = Encoder(bio)
+        with self.assertRaises(ValueError):
+            enc.write_printablestring('foo\0bar')
+        with self.assertRaises(ValueError):
+            enc.write_printablestring('foo\nbar')
+
+    def _assert_utf8string(self, value):
+        self._assert_function('utf8string', value)
+
+    def test_utf8string(self):
+        """Encode and decode utf8 string values"""
+        self._assert_utf8string('')
+        self._assert_utf8string('\0\n\r\n\t')
+        self._assert_utf8string('foo\nbar\0baz')
+        self._assert_utf8string('teSt \xFF \x00 \x61 4711')
+        bio = BytesIO(b'\x0C\x05\x66\x6F\x6F\xC3\xBF')
+        dec = Decoder(bio)
+        self.assertEqual('foo\xff', dec.read_utf8string())
+        # as above but split the encoding of 0xFF into two octets
+        bio = BytesIO(
+            # noqa: E131
+            b'\x2C\x0D'
+                # noqa: E131
+                b'\x04\x01\x66'      # f
+                b'\x04\x02\x6F\x6F'  # oo
+                b'\x04\x01\xC3'      # first part of 0xFF's encoding
+                b'\x04\x01\xBF'      # second part of 0xFF's encoding
+        )
+        dec = Decoder(bio)
+        self.assertEqual('foo\xff', dec.read_utf8string())
+        # encode
+        bio = BytesIO()
+        enc = Encoder(bio)
+        enc.write_utf8string('foo\nbar')
+        self.assertEqual(b'\x0C\x07\x66\x6F\x6F\x0A\x62\x61\x72',
+                         bio.getvalue())
+
+    def test_utf8string_errors(self):
+        """Try to decode an invalid utf8 encoding"""
+        bio = BytesIO(b'\x0C\x01\x61\x0C\x01\xFF\x0C\x01\x62\x0C\x01\x63')
+        dec = Decoder(bio)
+        self.assertEqual('a', dec.read_utf8string())
+        with self.assertRaises(UnicodeDecodeError):
+            dec.read_utf8string()
+        self.assertEqual('b', dec.read_utf8string())
+        self.assertEqual('c', dec.read_utf8string())
+
 
 if __name__ == '__main__':
     unittest.main()

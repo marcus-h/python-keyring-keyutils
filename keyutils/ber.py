@@ -7,6 +7,7 @@ Note: there are probably better BER readers/writers out there - I just wrote
 this in order to get familiar with ASN.1 and BER.
 """
 
+import re
 import struct
 import sys
 from io import BytesIO
@@ -84,6 +85,10 @@ class Tag:
     BITSTRING_CONSTRUCTED = (0, 3, True)
     OCTETSTRING_PRIMITIVE = (0, 4, False)
     OCTETSTRING_CONSTRUCTED = (0, 4, True)
+    UTF8STRING_PRIMITIVE = (0, 12, False)
+    UTF8STRING_CONSTRUCTED = (0, 12, True)
+    PRINTABLESTRING_PRIMITIVE = (0, 19, False)
+    PRINTABLESTRING_CONSTRUCTED = (0, 19, True)
     NULL = (0, 5, False)
     SEQUENCE = (0, 16, True)
     OID = (0, 6, False)
@@ -102,6 +107,14 @@ class Base:
                 break
             unused += 1
         return unused
+
+    # see Table 10 in X.680
+    # note: it is important to use \Z instead of $ because the latter
+    # matches '\n' (which is not a printable string)
+    _printablestring_re = re.compile('^[A-Za-z0-9 \'()+,-./:=?]*\\Z')
+
+    def _is_printablestring(self, data):
+        return self._printablestring_re.search(data) is not None
 
 
 class SequenceEncodingMapper:
@@ -235,6 +248,22 @@ class Encoder(Base):
     def write_octetstring(self, raw):
         # for now, we just support the length restricted, primitive encoding
         self.write_tag(*Tag.OCTETSTRING_PRIMITIVE)
+        length = len(raw)
+        self.write_length(length)
+        self._pack("{}B".format(length), *raw)
+
+    def write_utf8string(self, value):
+        self.write_tag(*Tag.UTF8STRING_PRIMITIVE)
+        raw = value.encode('utf-8')
+        length = len(raw)
+        self.write_length(length)
+        self._pack("{}B".format(length), *raw)
+
+    def write_printablestring(self, value):
+        if not self._is_printablestring(value):
+            raise ValueError("{} is not a printable string".format(value))
+        self.write_tag(*Tag.PRINTABLESTRING_PRIMITIVE)
+        raw = value.encode('ascii')
         length = len(raw)
         self.write_length(length)
         self._pack("{}B".format(length), *raw)
@@ -399,7 +428,9 @@ class Decoder(Base):
         self._peeked_tag = None
 
     def _push_reader(self, limit=None):
-        self._readers.append(LimitedReader(self._readers[-1], limit))
+        reader = LimitedReader(self._readers[-1], limit)
+        self._readers.append(reader)
+        return reader
 
     def _pop_reader(self):
         return self._readers.pop()
@@ -484,10 +515,15 @@ class Decoder(Base):
     def read_enumerated(self):
         return self._read_integer(Tag.ENUMERATED)
 
-    def _read_bitstring_octetstring(self, primitive_tag, constructed_tag,
-                                    primitive_handler):
+    def _read_raw_octets(self, primitive_tag, constructed_tag,
+                         primitive_handler=None, level=0):
+        def _handler(length):
+            return bytearray(self._read(length))
+
+        if primitive_handler is None:
+            primitive_handler = _handler
+
         raw = bytearray()
-        level = 0
         initial = True
         while level or initial:
             initial = False
@@ -529,17 +565,48 @@ class Decoder(Base):
 
     def read_bitstring(self):
         handler = self._bitstring_primitive_handler
-        return self._read_bitstring_octetstring(Tag.BITSTRING_PRIMITIVE,
-                                                Tag.BITSTRING_CONSTRUCTED,
-                                                handler)
+        return self._read_raw_octets(Tag.BITSTRING_PRIMITIVE,
+                                     Tag.BITSTRING_CONSTRUCTED, handler)
 
     def read_octetstring(self):
-        def handler(length):
-            return bytearray(self._read(length))
+        return self._read_raw_octets(Tag.OCTETSTRING_PRIMITIVE,
+                                     Tag.OCTETSTRING_CONSTRUCTED)
 
-        return self._read_bitstring_octetstring(Tag.OCTETSTRING_PRIMITIVE,
-                                                Tag.OCTETSTRING_CONSTRUCTED,
-                                                handler)
+    def _read_raw_string(self, tag_primitive, tag_constructed):
+        reader = None
+        level = 0
+        tag = self.peek_tag()
+        if tag == tag_constructed:
+            self.read_tag()
+            length = self.read_length()
+            if length == -1:
+                level = 1
+            else:
+                reader = self._push_reader(length)
+            tag_primitive = Tag.OCTETSTRING_PRIMITIVE
+            tag_constructed = Tag.OCTETSTRING_CONSTRUCTED
+        data = self._read_raw_octets(tag_primitive, tag_constructed,
+                                     level=level)
+        if reader is not None:
+            while not reader.is_eof():
+                # in this case, level is always 0
+                tmp = self._read_raw_octets(tag_primitive, tag_constructed)
+                data.extend(tmp)
+            self._pop_reader()
+        return data
+
+    def read_utf8string(self):
+        data = self._read_raw_string(Tag.UTF8STRING_PRIMITIVE,
+                                     Tag.UTF8STRING_CONSTRUCTED)
+        return data.decode('utf-8')
+
+    def read_printablestring(self):
+        data = self._read_raw_string(Tag.PRINTABLESTRING_PRIMITIVE,
+                                     Tag.PRINTABLESTRING_CONSTRUCTED)
+        data = data.decode('ascii')
+        if not self._is_printablestring(data):
+            raise DecodingError("no printable string: {}".format(data))
+        return data
 
     def read_null(self):
         tag = self.read_tag()
