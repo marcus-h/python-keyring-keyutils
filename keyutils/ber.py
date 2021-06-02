@@ -93,6 +93,7 @@ class Tag:
     UTCTIME_CONSTRUCTED = (0, 23, True)
     NULL = (0, 5, False)
     SEQUENCE = (0, 16, True)
+    SET = (0, 17, True)
     OID = (0, 6, False)
 
 
@@ -150,17 +151,26 @@ class Base:
         return _is_valid_hour(diff_hh) and _is_valid_minute(diff_mm)
 
 
-class SequenceEncodingMapper:
+class AbstractContainerEncodingMapper:
+    def is_sequence(self, item):
+        return isinstance(item, (tuple, list))
+
+    def is_set(self, item):
+        return isinstance(item, (set, frozenset))
+
+    def map(self, item):
+        raise NotImplementedError()
+
+
+class ContainerEncodingMapper(AbstractContainerEncodingMapper):
     def __init__(self, encoder):
         self._map = {
             bool: encoder.write_boolean,
             int: encoder.write_integer,
             bytes: encoder.write_octetstring,
             None.__class__: encoder.write_null,
+            str: encoder.write_utf8string,
         }
-
-    def is_sequence(self, item):
-        return isinstance(item, (tuple, list))
 
     def map(self, item):
         return self._map[item.__class__]
@@ -315,25 +325,35 @@ class Encoder(Base):
         self.write_tag(*Tag.NULL)
         self.write_length(0)
 
-    def write_sequence(self, sequence, mapper=None):
+    def _write_container(self, container, mapper=None):
         # this implementation conforms to DER (that's why we use a definite
-        # length for sequences) => works only for moderately small sequences
-        # and subsequences
+        # length for containers) => works only for moderately small containers
+        # and subcontainers
+
+        def _tag_for_container(container):
+            if mapper.is_sequence(container):
+                return Tag.SEQUENCE
+            elif mapper.is_set(container):
+                return Tag.SET
+            else:
+                raise ValueError('Either a set or sequence container expected')
+
         if mapper is None:
-            mapper = SequenceEncodingMapper(self)
-        iterators = [iter(sequence)]
+            mapper = ContainerEncodingMapper(self)
+        iterators = [(_tag_for_container(container), iter(container))]
         self._push_writable(BytesIO())
         seen = {}
         while iterators:
-            iterator = iterators.pop()
+            tag, iterator = iterators.pop()
             exhausted = True
             for item in iterator:
-                if mapper.is_sequence(item):
+                if mapper.is_sequence(item) or mapper.is_set(item):
                     if seen.get(id(item), False):
                         raise ValueError('cannot serialize cyclic sequence')
                     seen[id(item)] = True
-                    iterators.append(iterator)
-                    iterators.append(iter(item))
+                    iterators.append((tag, iterator))
+                    new_tag = _tag_for_container(item)
+                    iterators.append((new_tag, iter(item)))
                     self._push_writable(BytesIO())
                     exhausted = False
                     break
@@ -341,13 +361,23 @@ class Encoder(Base):
                 meth(item)
             if exhausted:
                 bio = self._pop_writable()
-                self.write_tag(*Tag.SEQUENCE)
+                self.write_tag(*tag)
                 self.write_length(len(bio.getvalue()))
                 self._write(bio.getvalue())
+
+    def write_sequence(self, sequence, mapper=None):
+        self._write_container(sequence, mapper)
 
     def write_sequence_of(self, sequence, mapper=None):
         # no type checking etc.
         self.write_sequence(sequence, mapper)
+
+    def write_set(self, set_value, mapper=None):
+        self._write_container(set_value, mapper)
+
+    def write_set_of(self, set_value, mapper=None):
+        # no type checking etc. (see write_sequence_of)
+        self.write_set(set_value, mapper)
 
     def write_oid(self, oid):
         if len(oid) < 2:
@@ -378,8 +408,28 @@ class Encoder(Base):
         self._pack("{}B".format(length), *octets)
 
 
-class SequenceDecodingBuilder:
-    def __init__(self, decoder):
+class AbstractContainerDecodingBuilder:
+    def begin_sequence(self):
+        raise NotImplementedError()
+
+    def end_sequence(self):
+        raise NotImplementedError()
+
+    def begin_set(self):
+        raise NotImplementedError()
+
+    def end_set(self):
+        raise NotImplementedError()
+
+    def handle(self, tag):
+        raise NotImplementedError()
+
+    def build(self):
+        raise NotImplementedError()
+
+
+class ContainerDecodingBuilder(AbstractContainerDecodingBuilder):
+    def __init__(self, decoder, immutable_containers=False):
         self._tag_map = {
             Tag.BOOLEAN: decoder.read_boolean,
             Tag.INTEGER: decoder.read_integer,
@@ -387,23 +437,45 @@ class SequenceDecodingBuilder:
             Tag.BITSTRING_CONSTRUCTED: decoder.read_bitstring,
             Tag.OCTETSTRING_PRIMITIVE: decoder.read_octetstring,
             Tag.OCTETSTRING_CONSTRUCTED: decoder.read_octetstring,
+            Tag.UTF8STRING_PRIMITIVE: decoder.read_utf8string,
+            Tag.UTF8STRING_CONSTRUCTED: decoder.read_utf8string,
             Tag.NULL: decoder.read_null,
             Tag.OID: decoder.read_oid
         }
         self._data = [[]]
+        self._immutable_container_count = 0 if not immutable_containers else 1
+
+    def _container_append(self, data):
+        if self._immutable_container_count:
+            if isinstance(data, bytearray):
+                data = bytes(data)
+        self._data[-1].append(data)
 
     def begin_sequence(self):
         new = []
-        self._data[-1].append(new)
+        self._container_append(new)
         self._data.append(new)
 
     def end_sequence(self):
-        self._data.pop()
+        container = self._data.pop()
+        if self._immutable_container_count:
+            self._data[-1][-1] = tuple(container)
+
+    def begin_set(self):
+        new = []
+        self._container_append(new)
+        self._data.append(new)
+        self._immutable_container_count += 1
+
+    def end_set(self):
+        container = self._data.pop()
+        self._data[-1][-1] = frozenset(container)
+        self._immutable_container_count -= 1
 
     def handle(self, tag):
         meth = self._map(tag)
         value = meth()
-        self._data[-1].append(value)
+        self._container_append(value)
         return value
 
     def _map(self, tag):
@@ -413,7 +485,7 @@ class SequenceDecodingBuilder:
         return self._data[0][0]
 
 
-class SequenceDecodingPrintBuilder(SequenceDecodingBuilder):
+class ContainerDecodingPrintBuilder(ContainerDecodingBuilder):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._indent = 0
@@ -427,6 +499,18 @@ class SequenceDecodingPrintBuilder(SequenceDecodingBuilder):
         super().end_sequence()
         self._indent -= 1
         self._print(']')
+
+    def begin_set(self):
+        super().begin_set()
+        # use set(...) instead of {} in order to avoid confusion in case of
+        # an empty set (set() vs. {})
+        self._print('set(')
+        self._indent += 1
+
+    def end_set(self):
+        super().end_set()
+        self._indent -= 1
+        self._print(')')
 
     def handle(self, tag):
         value = super().handle(tag)
@@ -673,33 +757,41 @@ class Decoder(Base):
         if length != 0:
             raise DecodingError('EOC encoding requires 0 length')
 
-    def read_sequence(self, builder=None):
+    def _read_container(self, initial_tag, builder=None):
         if builder is None:
             # this only works for a moderately small sequence because the
             # SequenceDecodingBuilder reads everything into memory - for a
             # larger sequence, write an appropriate builder...
-            builder = SequenceDecodingBuilder(self)
+            builder = ContainerDecodingBuilder(self)
         tag = self.peek_tag()
-        if tag != Tag.SEQUENCE:
-            raise DecodingError("expected sequence tag, got{}".format(tag))
+        if tag != initial_tag:
+            raise DecodingError("expected container tag, got: {}".format(tag))
         # it holds: len(self._readers) == 1 and the reader is unlimited
         initial = True
+        container_tags = []
         while len(self._readers) > 1 or initial:
             restart = False
             # pop exhausted readers
             while self._readers[-1].is_eof():
                 self._pop_reader()
-                builder.end_sequence()
+                if container_tags.pop() == Tag.SEQUENCE:
+                    builder.end_sequence()
+                else:
+                    builder.end_set()
                 restart = True
             if restart:
                 continue
             tag = self.peek_tag()
-            if tag == Tag.SEQUENCE:
+            if tag in (Tag.SEQUENCE, Tag.SET):
                 initial = False
                 self.read_tag()
                 length = self.read_length()
                 self._push_reader(length if length != -1 else None)
-                builder.begin_sequence()
+                container_tags.append(tag)
+                if tag == Tag.SEQUENCE:
+                    builder.begin_sequence()
+                else:
+                    builder.begin_set()
                 continue
             elif tag == Tag.END_OF_CONTENTS:
                 self.read_end_of_contents()
@@ -711,9 +803,19 @@ class Decoder(Base):
             builder.handle(tag)
         return builder.build()
 
+    def read_sequence(self, builder=None):
+        return self._read_container(Tag.SEQUENCE, builder)
+
     def read_sequence_of(self, builder=None):
         # no type checking etc.
         return self.read_sequence(builder)
+
+    def read_set(self, builder=None):
+        return self._read_container(Tag.SET, builder)
+
+    def read_set_of(self, builder=None):
+        # no type checking etc. (see also read_sequence_of)
+        return self.read_set(builder)
 
     def read_oid(self):
         tag = self.read_tag()
@@ -805,4 +907,4 @@ if __name__ == '__main__':
         sys.exit(1)
     with open(sys.argv[1], 'rb') as f:
         dec = Decoder(f)
-        dec.read_sequence(SequenceDecodingPrintBuilder(dec))
+        dec.read_sequence(ContainerDecodingPrintBuilder(dec))

@@ -3,7 +3,7 @@ import os
 from io import BytesIO
 
 from keyutils.ber import (Encoder, Decoder, DecodingError, Bitstring, Tag,
-                          SequenceDecodingBuilder)
+                          ContainerDecodingBuilder)
 
 
 class TestBer(unittest.TestCase):
@@ -425,7 +425,7 @@ class TestBer(unittest.TestCase):
 
     def test_sequence_custom_builder(self):
         """Test custom builder in Decoder.read_sequence"""
-        class TracingSequenceDecodingBuilder(SequenceDecodingBuilder):
+        class TracingSequenceDecodingBuilder(ContainerDecodingBuilder):
             def __init__(self, *args, **kwargs):
                 super(TracingSequenceDecodingBuilder, self).__init__(*args,
                                                                      **kwargs)
@@ -500,6 +500,74 @@ class TestBer(unittest.TestCase):
         enc = Encoder(bio)
         enc.write_sequence_of([])
         self.assertEqual(b'\x30\x00', bio.getvalue())
+
+    def _assert_set(self, value):
+        self._assert_function('set', value)
+
+    def test_set(self):
+        """Encode and decode set values"""
+        self._assert_set(set())
+        self._assert_set({1, 2, 3, 4, 5, -7})
+        self._assert_set({b'foo', 'foo', 42})
+        self._assert_set({0})
+        s = frozenset
+        data = {s({None}), 'foo', s({'foo'}), s({s({s({0}), 42, 0}), False})}
+        self._assert_set(data)
+        self._assert_set({(), ('foo',), s({'foo'}), (s({42}),)})
+        # a set encoding with "duplicates" can be decoded
+        bio = BytesIO(b'\x31\x0A\x0C\x03foo\x0C\x03foo')
+        dec = Decoder(bio)
+        self.assertEqual({'foo'}, dec.read_set())
+        # encode
+        bio = BytesIO()
+        enc = Encoder(bio)
+        enc.write_set({'foo'})
+        self.assertEqual(b'\x31\x05\x0C\x03foo', bio.getvalue())
+
+    def _assert_set_of(self, value):
+        self._assert_function('set_of', value)
+
+    def test_set_of(self):
+        """Encode and decode set-of values"""
+        self._assert_set_of(set())
+        self._assert_set_of({'foo', 'bar', 'baz'})
+        # no type checking is performed...
+        self._assert_set_of({'foo', b'foo', 42, None, True})
+
+    def test_set_sequence(self):
+        """Pass a set to write_sequence and a sequence to write_set"""
+        bio = BytesIO()
+        enc = Encoder(bio)
+        enc.write_set(['foo'])       # encoded as a sequence
+        enc.write_sequence({'bar'})  # encoded as a set
+        self.assertEqual(b'\x30\x05\x0C\x03foo\x31\x05\x0C\x03bar',
+                         bio.getvalue())
+        # however, the decoder is not that lenient
+        with self.assertRaises(DecodingError):
+            self._assert_set(['xxx'])
+        with self.assertRaises(DecodingError):
+            self._assert_sequence({'xxx'})
+
+    def test_set_in_sequence(self):
+        """Mix sets and sequences in a sequence"""
+        data = [{'foo', 9}, [[]], ['y', {'y', (1, 2, 2)}], [[3], [[[{True}]]]]]
+        self._assert_sequence(data)
+        bio = BytesIO()
+        enc = Encoder(bio)
+        # only mutable containers (except inside the set)
+        data = [
+            [{5, 6, 7}, 'x', {'x'}, ['x', 'x']], {'y', (), ('y',)},
+        ]
+        enc.write_sequence(data)
+        s = frozenset
+        # only immutable containers
+        expected = (
+            (s({5, 6, 7}), 'x', s({'x'}), ('x', 'x')), s({'y', (), ('y',)}),
+        )
+        bio.seek(0, os.SEEK_SET)
+        dec = Decoder(bio)
+        builder = ContainerDecodingBuilder(dec, immutable_containers=True)
+        self.assertEqual(expected, dec.read_sequence(builder))
 
     def _assert_oid(self, oid):
         self._assert_function('oid', oid)
