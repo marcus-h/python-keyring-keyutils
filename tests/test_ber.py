@@ -35,11 +35,14 @@ class TestBer(unittest.TestCase):
         self._assert_tag(0, 424213379998101, False)
         self._assert_tag(2, 999999999999999999191848484777000, True)
 
-    def _assert_function(self, what, data):
+    def _assert_function(self, what, data, splat=False):
         bio = BytesIO()
         enc = Encoder(bio)
         enc_meth = getattr(enc, "write_{}".format(what))
-        enc_meth(data)
+        if splat:
+            enc_meth(*data)
+        else:
+            enc_meth(data)
         bio.seek(0, os.SEEK_SET)
         dec = Decoder(bio)
         dec_meth = getattr(dec, "read_{}".format(what))
@@ -197,25 +200,32 @@ class TestBer(unittest.TestCase):
         self.assertEqual(1, bs.get(22))
         self.assertEqual(1, bs.get(23))
 
-    def _assert_bitstring(self, value):
-        self._assert_function('bitstring', value)
+    def _assert_bitstring(self, value, unused_bits):
+        self._assert_function('bitstring', (value, unused_bits), splat=True)
 
     def test_bitstring_primitive(self):
         """Encode and decode bitstrings (primitive)"""
-        self._assert_bitstring(bytearray())
+        self._assert_bitstring(bytearray(), 0)
         # see X.690 (8.6.4.2)
-        raw = bytearray([0x0A, 0x3B, 0x5F, 0x29, 0x1C, 0xD0])
-        self._assert_bitstring(raw)
+        raw = bytearray([0x0A, 0x3B, 0x5F, 0x29, 0x1C, 0xD0])  # no unused bits
+        self._assert_bitstring(raw, 0)
         bio = BytesIO()
         enc = Encoder(bio)
-        enc.write_bitstring(raw)
+        # assume 4 bits are unused (as in X.690 (8.6.4.2))
+        enc.write_bitstring(raw, 4)
         self.assertEqual(b'\x03\x07\x04\x0A\x3B\x5F\x29\x1C\xD0',
                          bio.getvalue())
-        # 0-length bitstring (remove trailing zeros)
+        # do not remove trailing zeros
         bio = BytesIO()
         enc = Encoder(bio)
-        enc.write_bitstring(bytearray([0, 0, 0]))
-        self.assertEqual(b'\x03\x01\x00', bio.getvalue())
+        enc.write_bitstring(bytearray([0, 0, 0]), 0)
+        self.assertEqual(b'\x03\x04\x00\x00\x00\x00', bio.getvalue())
+        # do not remove trailing zeros and keep unused bits information
+        bio = BytesIO()
+        enc = Encoder(bio)
+        # last 3 bits are unused
+        enc.write_bitstring(bytearray([0xF0, 0, 0, 0]), 3)
+        self.assertEqual(b'\x03\x05\x03\xF0\x00\x00\x00', bio.getvalue())
 
     def test_bitstring_no_unused_bits(self):
         """Decode a non-empty bitstring with no unused bits"""
@@ -224,13 +234,13 @@ class TestBer(unittest.TestCase):
         )
         dec = Decoder(bio)
         raw = bytearray([0x00, 0x00, 0xFF])
-        self.assertEqual(raw, dec.read_bitstring())
+        self.assertEqual((raw, 0), dec.read_bitstring())
         bio = BytesIO(
             b'\x03\x04\x00\x00\x00\x00'
         )
         dec = Decoder(bio)
         raw = bytearray([0x00, 0x00, 0x00])
-        self.assertEqual(raw, dec.read_bitstring())
+        self.assertEqual((raw, 0), dec.read_bitstring())
 
     def test_bitstring_max_unused_bits(self):
         """Decode a non-empty bitstring with seven unused bits"""
@@ -239,29 +249,28 @@ class TestBer(unittest.TestCase):
         )
         dec = Decoder(bio)
         raw = bytearray([0x00, 0x00, 0x01, 0x00, 0x00])
-        self.assertEqual(raw, dec.read_bitstring())
+        self.assertEqual((raw, 7), dec.read_bitstring())
 
     def test_bitstring_unused_bits_errors(self):
         """Error out on illegal unused bit values"""
-        # 7 bits should be unused but the last bit is set
+        bio = BytesIO()
+        enc = Encoder(bio)
+        with self.assertRaises(ValueError):
+            # 17 unused bits
+            enc.write_bitstring(bytearray([0x00, 0x00]), 17)
+
+        # 8 unused bits
         bio = BytesIO(
-            b'\x03\x06\x07\x00\x00\x01\x00\x01'
+            b'\x03\x06\x08\x00\x00\x01\x00\x01'
         )
         dec = Decoder(bio)
         with self.assertRaises(DecodingError):
             dec.read_bitstring()
 
-        # 7 bits should be unused but bit 4 (from lsb to msb) is set
+        # strange constructed encoding (unused bits in intermediate bitstring)
         bio = BytesIO(
-            b'\x03\x06\x07\x00\x00\x01\x00\x10'
-        )
-        dec = Decoder(bio)
-        with self.assertRaises(DecodingError):
-            dec.read_bitstring()
-
-        # the last 3 bits should be unset
-        bio = BytesIO(
-            b'\x03\x06\x03\x00\x00\x01\x00\x14'
+            b'\x23\x80\x03\x02\x01\x00\x03\x03\x01\x20\x13\x00\x00'
+            #                    ^ one unused bit in intermediate bitstring
         )
         dec = Decoder(bio)
         with self.assertRaises(DecodingError):
@@ -275,7 +284,7 @@ class TestBer(unittest.TestCase):
             b'\x23\x80\x03\x03\x00\x0A\x3B\x03\x05\x04\x5F\x29\x1C\xD0\x00\x00'
         )
         dec = Decoder(bio)
-        self.assertEqual(raw, dec.read_bitstring())
+        self.assertEqual((raw, 4), dec.read_bitstring())
         # nested encoding
         bio = BytesIO(
             # noqa: E131
@@ -288,10 +297,10 @@ class TestBer(unittest.TestCase):
                         b'\x23\x80'
                             # noqa: E131
                             b'\x03\x01\x00'             # empty bitstring
-                            b'\x03\x04\01\xAF\x00\x3E'
+                            b'\x03\x04\x00\xAF\x00\x3E'
                             b'\x03\x02\x00\xFF'
                         b'\x00\x00'
-                        b'\x03\x03\x07\x11\x80'
+                        b'\x03\x03\x00\x11\x80'
                     b'\x00\x00'
                     b'\x23\x80'
                         b'\x03\x02\x00\x0F'
@@ -302,12 +311,14 @@ class TestBer(unittest.TestCase):
                 b'\x23\x80'
                 b'\x03\x01\x00'                         # empty bitstring
                 b'\x00\x00'
+                b'\x03\x02\x00\xCC'
+                b'\x03\x02\x00\x00'                     # all bits are 0
                 b'\x03\x04\x02\xEA\xAF\x4C'
             b'\x00\x00'
         )
         dec = Decoder(bio)
-        self.assertEqual(b'\xAF\x00\x3E\xFF\x11\x80\x0F\xEA\xAF\x4C',
-                         dec.read_bitstring())
+        raw = b'\xAF\x00\x3E\xFF\x11\x80\x0F\xCC\x00\xEA\xAF\x4C'
+        self.assertEqual((raw, 2), dec.read_bitstring())
 
     def _assert_octetstring(self, value):
         self._assert_function('octetstring', value)

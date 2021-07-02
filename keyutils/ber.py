@@ -103,14 +103,6 @@ class Base:
             validator = Validator()
         self._validator = validator
 
-    def _unused_bits(self, byte):
-        unused = 0
-        for i in range(8):
-            if (byte >> i) & 1:
-                break
-            unused += 1
-        return unused
-
     # see Table 10 in X.680
     # note: it is important to use \Z instead of $ because the latter
     # matches '\n' (which is not a printable string)
@@ -274,19 +266,14 @@ class Encoder(Base):
     def write_enumerated(self, num):
         self._write_integer(Tag.ENUMERATED, num)
 
-    def write_bitstring(self, raw):
-        # This behavior is a bit debatable; if the underlying bitstring
-        # type has a NamedBitList, this behavior is OK (see X.680 22.7).
-        # Note: trailing zeros are perfectly fine! (see also X.690 8.6.2.2)
-        while raw and not raw[-1]:
-            raw.pop()
+    def write_bitstring(self, raw, unused_bits):
+        if unused_bits < 0 or unused_bits > 7:
+            raise ValueError('unused_bits must be between 0 and 7')
         # for now, we just support the length restricted, primitive encoding
         self.write_tag(*Tag.BITSTRING_PRIMITIVE)
         length = 1 + len(raw)
         self.write_length(length)
-        # due to the removal of trailing zeros, we have 0 <= unused <= 7
-        unused = self._unused_bits(raw[-1]) if raw else 0
-        self._pack("{}B".format(length), unused, *raw)
+        self._pack("{}B".format(length), unused_bits, *raw)
 
     def write_octetstring(self, raw):
         # for now, we just support the length restricted, primitive encoding
@@ -677,21 +664,33 @@ class Decoder(Base):
             msg = 'primitive bitstring encoding requires definite length'
             raise DecodingError(msg)
         octets = list(self._read(length))
-        unused = octets.pop(0)
-        if not octets:
-            return bytearray()
-        unused_act = self._unused_bits(octets[-1])
-        if unused > unused_act:
-            msg = "unused bit violation: {} vs. {}".format(unused, unused_act)
-            raise DecodingError(msg)
+        unused_bits = octets.pop(0)
+        if unused_bits < 0 or unused_bits > 7:
+            raise DecodingError('unused_bits out of range')
         # note that octets can have trailing zeros (it is perfectly valid if it
         # consists only of zeros)
-        return bytearray(octets)
+        return bytearray(octets), unused_bits
 
-    def read_bitstring(self):
-        handler = self._bitstring_primitive_handler
-        return self._read_raw_octets(Tag.BITSTRING_PRIMITIVE,
-                                     Tag.BITSTRING_CONSTRUCTED, handler)
+    def read_bitstring(self, unused_bits=False):
+        class Handler:
+            def __init__(self, primitive_handler):
+                self.unused_bits = 0
+                self._primitive_handler = primitive_handler
+
+            def __call__(self, length):
+                if self.unused_bits:
+                    # can happen, for instance, in a constructed encoding
+                    # where an intermediate bitstring has unused bits (check
+                    # if this would be a legal encoding...)
+                    msg = 'strange/unsupported bitstring encoding'
+                    raise DecodingError(msg)
+                raw, self.unused_bits = self._primitive_handler(length)
+                return raw
+
+        handler = Handler(self._bitstring_primitive_handler)
+        raw = self._read_raw_octets(Tag.BITSTRING_PRIMITIVE,
+                                    Tag.BITSTRING_CONSTRUCTED, handler)
+        return raw, handler.unused_bits
 
     def read_octetstring(self):
         return self._read_raw_octets(Tag.OCTETSTRING_PRIMITIVE,
