@@ -440,6 +440,8 @@ class ContainerDecodingBuilder(AbstractContainerDecodingBuilder):
         if self._immutable_container_count:
             if isinstance(data, bytearray):
                 data = bytes(data)
+            elif isinstance(data, list):
+                data = tuple(data)
         self._data[-1].append(data)
 
     def is_container_tag(self, tag):

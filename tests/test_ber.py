@@ -541,6 +541,13 @@ class TestBer(unittest.TestCase):
         dec = Decoder(bio)
         self.assertEqual({'foo'}, dec.read_set())
 
+    def test_set_containing_an_oid(self):
+        """Decode a set that contains an oid"""
+        bio = BytesIO(b'\x31\x05\x06\x03\x88\x37\x03')
+        dec = Decoder(bio)
+        # oid is a tuple instead of a list
+        self.assertEqual({(2, 999, 3)}, dec.read_set())
+
     def _assert_set_of(self, value):
         self._assert_function('set_of', value)
 
