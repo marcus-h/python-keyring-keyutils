@@ -396,16 +396,13 @@ class Encoder(Base):
 
 
 class AbstractContainerDecodingBuilder:
-    def begin_sequence(self):
+    def is_container_tag(self, tag):
         raise NotImplementedError()
 
-    def end_sequence(self):
+    def begin_container(self, tag):
         raise NotImplementedError()
 
-    def begin_set(self):
-        raise NotImplementedError()
-
-    def end_set(self):
+    def end_container(self):
         raise NotImplementedError()
 
     def handle(self, tag):
@@ -430,7 +427,14 @@ class ContainerDecodingBuilder(AbstractContainerDecodingBuilder):
             Tag.OID: decoder.read_oid
         }
         self._data = [[]]
+        self._tags = []
         self._immutable_container_count = 0 if not immutable_containers else 1
+
+    def _new_container(self, container=None):
+        if container is None:
+            container = []
+        self._data[-1].append(container)
+        self._data.append(container)
 
     def _container_append(self, data):
         if self._immutable_container_count:
@@ -438,23 +442,49 @@ class ContainerDecodingBuilder(AbstractContainerDecodingBuilder):
                 data = bytes(data)
         self._data[-1].append(data)
 
-    def begin_sequence(self):
-        new = []
-        self._container_append(new)
-        self._data.append(new)
+    def is_container_tag(self, tag):
+        return self._is_sequence_tag(tag) or self._is_set_tag(tag)
 
-    def end_sequence(self):
+    def _is_sequence_tag(self, tag):
+        return tag == Tag.SEQUENCE
+
+    def _is_set_tag(self, tag):
+        return tag == Tag.SET
+
+    def begin_container(self, tag):
+        self._tags.append(tag)
+        if self._is_sequence_tag(tag):
+            self._begin_sequence()
+        elif self._is_set_tag(tag):
+            self._begin_set()
+        else:
+            raise ValueError("Neither sequence nor set tag: {}".format(tag))
+
+    def end_container(self):
+        if not self._tags:
+            raise RuntimeError('no such container')
+        tag = self._tags.pop()
+        if self._is_sequence_tag(tag):
+            self._end_sequence()
+        elif self._is_set_tag(tag):
+            self._end_set()
+        else:
+            # should not happen...
+            raise RuntimeError("Neither sequence nor set tag: {}".format(tag))
+
+    def _begin_sequence(self):
+        self._new_container()
+
+    def _end_sequence(self):
         container = self._data.pop()
         if self._immutable_container_count:
             self._data[-1][-1] = tuple(container)
 
-    def begin_set(self):
-        new = []
-        self._container_append(new)
-        self._data.append(new)
+    def _begin_set(self):
+        self._new_container()
         self._immutable_container_count += 1
 
-    def end_set(self):
+    def _end_set(self):
         container = self._data.pop()
         self._data[-1][-1] = frozenset(container)
         self._immutable_container_count -= 1
@@ -469,6 +499,9 @@ class ContainerDecodingBuilder(AbstractContainerDecodingBuilder):
         return self._tag_map[tag]
 
     def build(self):
+        if self._tags:
+            # should not happen...
+            raise RuntimeError('begin_container/end_container mismatch')
         return self._data[0][0]
 
 
@@ -477,25 +510,25 @@ class ContainerDecodingPrintBuilder(ContainerDecodingBuilder):
         super().__init__(*args, **kwargs)
         self._indent = 0
 
-    def begin_sequence(self):
-        super().begin_sequence()
+    def _begin_sequence(self):
+        super()._begin_sequence()
         self._print('[')
         self._indent += 1
 
-    def end_sequence(self):
-        super().end_sequence()
+    def _end_sequence(self):
+        super()._end_sequence()
         self._indent -= 1
         self._print(']')
 
-    def begin_set(self):
-        super().begin_set()
+    def _begin_set(self):
+        super()._begin_set()
         # use set(...) instead of {} in order to avoid confusion in case of
         # an empty set (set() vs. {})
         self._print('set(')
         self._indent += 1
 
-    def end_set(self):
-        super().end_set()
+    def _end_set(self):
+        super()._end_set()
         self._indent -= 1
         self._print(')')
 
@@ -767,35 +800,27 @@ class Decoder(Base):
             raise DecodingError("expected container tag, got: {}".format(tag))
         # it holds: len(self._readers) == 1 and the reader is unlimited
         initial = True
-        container_tags = []
         while len(self._readers) > 1 or initial:
             restart = False
             # pop exhausted readers
             while self._readers[-1].is_eof():
                 self._pop_reader()
-                if container_tags.pop() == Tag.SEQUENCE:
-                    builder.end_sequence()
-                else:
-                    builder.end_set()
+                builder.end_container()
                 restart = True
             if restart:
                 continue
             tag = self.peek_tag()
-            if tag in (Tag.SEQUENCE, Tag.SET):
+            if builder.is_container_tag(tag):
                 initial = False
                 self.read_tag()
                 length = self.read_length()
                 self._push_reader(length if length != -1 else None)
-                container_tags.append(tag)
-                if tag == Tag.SEQUENCE:
-                    builder.begin_sequence()
-                else:
-                    builder.begin_set()
+                builder.begin_container(tag)
                 continue
             elif tag == Tag.END_OF_CONTENTS:
                 self.read_end_of_contents()
                 reader = self._pop_reader()
-                builder.end_sequence()
+                builder.end_container()
                 if not reader.is_unlimited():
                     raise RuntimeError('EOC but no unlimited reader')
                 continue

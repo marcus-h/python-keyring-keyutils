@@ -436,22 +436,22 @@ class TestBer(unittest.TestCase):
 
     def test_sequence_custom_builder(self):
         """Test custom builder in Decoder.read_sequence"""
+        # _begin_set/_end_set are not overriden because they are not used
         class TracingSequenceDecodingBuilder(ContainerDecodingBuilder):
             def __init__(self, *args, **kwargs):
-                super(TracingSequenceDecodingBuilder, self).__init__(*args,
-                                                                     **kwargs)
+                super().__init__(*args, **kwargs)
                 self.trace = []
 
-            def begin_sequence(self):
-                super(TracingSequenceDecodingBuilder, self).begin_sequence()
+            def _begin_sequence(self):
+                super()._begin_sequence()
                 self.trace.append('[')
 
-            def end_sequence(self):
-                super(TracingSequenceDecodingBuilder, self).end_sequence()
+            def _end_sequence(self):
+                super()._end_sequence()
                 self.trace.append(']')
 
             def handle(self, tag):
-                data = super(TracingSequenceDecodingBuilder, self).handle(tag)
+                data = super().handle(tag)
                 self.trace.append((tag, data))
                 return data
 
@@ -534,6 +534,12 @@ class TestBer(unittest.TestCase):
         enc = Encoder(bio)
         enc.write_set({'foo'})
         self.assertEqual(b'\x31\x05\x0C\x03foo', bio.getvalue())
+
+    def test_set_indefinite_length(self):
+        """Decode a set with an indefinite length"""
+        bio = BytesIO(b'\x31\x80\x0C\x03foo\x00\x00')
+        dec = Decoder(bio)
+        self.assertEqual({'foo'}, dec.read_set())
 
     def _assert_set_of(self, value):
         self._assert_function('set_of', value)
