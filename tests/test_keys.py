@@ -57,7 +57,6 @@ class TestKeys(unittest.TestCase):
         self.assertEqual(errno.ENOKEY, expected.exception.errno)
         with self.assertRaises(OSError) as expected:
             key.payload()
-        expected_errnos = (errno.ENOKEY, errno.EPERM)
         # Invalidating a key kicks the garbage collection. It is possible
         # that we still find the key via lookup_user_key, but we do not possess
         # the key anymore. Hence, the subsequent permission check in
