@@ -17,7 +17,8 @@ setup(
     ],
     entry_points={
         'keyring.backends': [
-            'Keyutils/KernelKeyring = keyutils.backend:KeyutilsKeyringBackend'
+            'Keyutils/KernelKeyring = keyutils.backend:KeyutilsKeyringBackend',
+            'Keyutils/OscKernelKeyring = keyutils.osc:OscKernelKeyringBackend',
         ]
     }
 )
