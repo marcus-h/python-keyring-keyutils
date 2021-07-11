@@ -5,6 +5,48 @@ that can be used by
 in the kernel keyring.
 
 
+What
+----
+In order to authenticate with the OBS API, credentials (a username and
+a password) are required. That is, when interacting with the OBS API, osc
+has to be aware of these credentials. For this, osc provides several
+alternatives for storing and retrieving the credentials (this is a
+per apiurl setting). For instance, it can make use of a python-keyring
+backend, it can store the credentials in the config file (in plaintext),
+or it can always ask (on each osc invocation) for the credentials again
+etc.
+
+The `keyutils.osc` module provides yet another python-keyring backend
+(`keyutils.osc.OscKernelKeyringBackend`), which can be used by osc for
+storing and retrieving the user's credentials. This backend uses the
+kernel keyring for storing and retrieving the credentials (in plaintext).
+More precisely, it stores and retrieves the credentials from a "sub" keyring
+of the session keyring.
+
+If osc is configured to use this backend, the basic workflow looks like this
+(assuming that the credentials are not yet stored in the kernel keyring).
+
+```
+marcus@linux:~> osc ls -v home:Marcus_H python-keyring-keyutils python-keyring-keyutils.spec
+Password required for user Marcus_H (apiurl: api.opensuse.org)
+Password: 
+e4f007089f4d17f2a035105bcc9ac371       4       947 Jul 10 20:17 python-keyring-keyutils.spec
+marcus@linux:~> 
+```
+
+```
+marcus@linux:~> osc ls -v home:Marcus_H python-keyring-keyutils python-keyring-keyutils.changes
+0decb70f9081a9b1d661886e442e3051       4       164 Jul 10 20:08 python-keyring-keyutils.changes
+marcus@linux:~>
+```
+
+That is, on the first invocation, osc prompts for the password and stores it
+in the kernel keyring. On the second invocation, osc directly retrieves the
+password from the kernel keyring. More precisely, osc will only prompt for
+the password again, if the corresponding key was removed from the kernel
+keyring (for whatever reason).
+
+
 Security Considerations
 -----------------------
 Since the `keyutils.osc.OscKernelKeyringBackend` class is a subclass of the
@@ -14,8 +56,8 @@ from the
 also apply. Additionally, it is important to note that osc itself
 uses a cookie that can be used for authentication. That is, even if
 no/arbitrary credentials are stored in the kernel keyring, it is possible to
-authenticate via the cookie (the cookie is stored in the
-`~/.osc\_cookiejar` file).
+authenticate via the cookie (the cookie is stored in the `~/.osc\_cookiejar`
+file).
 
 
 Usage
