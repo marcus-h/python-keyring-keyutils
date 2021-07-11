@@ -1,29 +1,29 @@
 The `keyutils.osc` module provides a
-[python-keyring](https://github.com/jaraco/keyring) [1] backend
-that can be used by
+[python-keyring](https://github.com/jaraco/keyring) [1] backend that can  
+be used by
 [osc](https://github.com/openSUSE/osc) for managing the credentials
 in the kernel keyring.
 
 
 What
 ----
-In order to authenticate with the OBS API, credentials (a username and
-a password) are required. That is, when interacting with the OBS API, osc
-has to be aware of these credentials. For this, osc provides several
-alternatives for storing and retrieving the credentials (this is a
-per apiurl setting). For instance, it can make use of a python-keyring
-backend, it can store the credentials in the config file (in plaintext),
-or it can always ask (on each osc invocation) for the credentials again
+In order to authenticate with the OBS API, credentials (a username and  
+a password) are required. That is, when interacting with the OBS API, osc  
+has to be aware of these credentials. For this, osc provides several  
+alternatives for storing and retrieving the credentials (this is a  
+per apiurl setting). For instance, it can make use of a python-keyring  
+backend, it can store the credentials in the config file (in plaintext),  
+or it can always ask (on each osc invocation) for the credentials again  
 etc.
 
-The `keyutils.osc` module provides yet another python-keyring backend
-(`keyutils.osc.OscKernelKeyringBackend`), which can be used by osc for
-storing and retrieving the user's credentials. This backend uses the
-kernel keyring for storing and retrieving the credentials (in plaintext).
-More precisely, it stores and retrieves the credentials from a "sub" keyring
+The `keyutils.osc` module provides yet another python-keyring backend  
+(`keyutils.osc.OscKernelKeyringBackend`), which can be used by osc for  
+storing and retrieving the user's credentials. This backend uses the  
+kernel keyring for storing and retrieving the credentials (in plaintext).  
+More precisely, it stores and retrieves the credentials from a "sub" keyring  
 of the session keyring.
 
-If osc is configured to use this backend, the basic workflow looks like this
+If osc is configured to use this backend, the basic workflow looks like this  
 (assuming that the credentials are not yet stored in the kernel keyring).
 
 ```
@@ -40,31 +40,31 @@ marcus@linux:~> osc ls -v home:Marcus_H python-keyring-keyutils python-keyring-k
 marcus@linux:~>
 ```
 
-That is, on the first invocation, osc prompts for the password and stores it
-in the kernel keyring. On the second invocation, osc directly retrieves the
-password from the kernel keyring. More precisely, osc will only prompt for
-the password again, if the corresponding key was removed from the kernel
+That is, on the first invocation, osc prompts for the password and stores it  
+in the kernel keyring. On the second invocation, osc directly retrieves the  
+password from the kernel keyring. More precisely, osc will only prompt for  
+the password again, if the corresponding key was removed from the kernel  
 keyring (for whatever reason).
 
 
 Security Considerations
 -----------------------
-Since the `keyutils.osc.OscKernelKeyringBackend` class is a subclass of the
-`keyutils.keys.KeyutilsKeyringBackend` class, all security considerations
+Since the `keyutils.osc.OscKernelKeyringBackend` class is a subclass of the  
+`keyutils.keys.KeyutilsKeyringBackend` class, all security considerations  
 from the
 [README.md](https://github.com/marcus-h/python-keyring-keyutils/blob/master/README.md) [3]
-also apply. Additionally, it is important to note that osc itself
-uses a cookie that can be used for authentication. That is, even if
-no/arbitrary credentials are stored in the kernel keyring, it is possible to
-authenticate via the cookie (the cookie is stored in the `~/.osc\_cookiejar`
+also apply. Additionally, it is important to note that osc itself  
+uses a cookie that can be used for authentication. That is, even if  
+no/arbitrary credentials are stored in the kernel keyring, it is possible to  
+authenticate via the cookie (the cookie is stored in the `~/.osc\_cookiejar`  
 file).
 
 
 Usage
 -----
-After the installation of this backend, osc can be instructed to use it
-for storing the credentials for a specific apiurl in the kernel keyring.
-When configuring the credentials for a new apiurl, osc offers several
+After the installation of this backend, osc can be instructed to use it  
+for storing the credentials for a specific apiurl in the kernel keyring.  
+When configuring the credentials for a new apiurl, osc offers several  
 methods for storing the credentials. For instance,
 
 ```
@@ -91,8 +91,8 @@ marcus@linux:~>
 
 That is, the `OscKernelKeyringBackend` is selected by choosing option 4.
 
-Alternatively, osc can also be configured to use the `OscKernelKeyringBackend`
-for an existing apiurl. In this case, the credentials are removed from the
+Alternatively, osc can also be configured to use the `OscKernelKeyringBackend`  
+for an existing apiurl. In this case, the credentials are removed from the  
 existing backend and are stored in the kernel keyring. For instance,
 
 ```
@@ -112,15 +112,15 @@ marcus@linux:~>
 
 As above, the `OscKernelKeyringBackend` is selected by choosing option 4.
 
-Note that the password has to be entered again. Actually, in order to
-simply change the password store (without entering the password again),
-it should be sufficient to run
-`osc config https://api.opensuse.org pass --select-password-store` but
+Note that the password has to be entered again. Actually, in order to  
+simply change the password store (without entering the password again),  
+it should be sufficient to run  
+`osc config https://api.opensuse.org pass --select-password-store` but  
 there is currently a bug in osc.
 
-By default (and there is currently no way to configure this), the credentials
-are stored in the `osc_credentials` keyring, which is a "sub" keyring of the
-session keyring. For instance, the session keyring can be inspected via the
+By default (and there is currently no way to configure this), the credentials  
+are stored in the `osc_credentials` keyring, which is a "sub" keyring of the  
+session keyring. For instance, the session keyring can be inspected via the  
 keyctl tool, which is part of the
 [C keyutils library](https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git) [4],
 as follows
@@ -135,7 +135,7 @@ Keyring
 marcus@linux:~>
 ```
 
-The password of the user Marcus\_H for the api.opensuse.org host can be
+The password of the user Marcus\_H for the api.opensuse.org host can be  
 retrieved via
 
 ```
@@ -144,8 +144,8 @@ mySecretPassword
 marcus@linux:~>
 ```
 
-Moreover, it is also possible to "remove" the password from the keyring.
-Afterwards, a subsequent osc invocation asks for the password and stores
+Moreover, it is also possible to "remove" the password from the keyring.  
+Afterwards, a subsequent osc invocation asks for the password and stores  
 it in the `osc_credentials` keyring again.
 
 ```
@@ -171,8 +171,8 @@ Keyring
 marcus@linux:~>
 ```
 
-Note: the "persistence" of the session keyring is configuration dependent.
-For instance, xdm can be configured to create a new session keyring during
+Note: the "persistence" of the session keyring is configuration dependent.  
+For instance, xdm can be configured to create a new session keyring during  
 the log in, which is revoked during the log out (see also the
 [README.md](https://github.com/marcus-h/python-keyring-keyutils/blob/master/README.md) [3]
 file).
@@ -180,7 +180,7 @@ file).
 
 References
 ----------
-[1] https://github.com/jaraco/keyring
-[2] https://github.com/openSUSE/osc
-[3] https://github.com/marcus-h/python-keyring-keyutils/blob/master/README.md
-[4] https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git
+[1] https://github.com/jaraco/keyring  
+[2] https://github.com/openSUSE/osc  
+[3] https://github.com/marcus-h/python-keyring-keyutils/blob/master/README.md  
+[4] https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git  
