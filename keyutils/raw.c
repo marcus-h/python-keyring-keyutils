@@ -192,7 +192,7 @@ static PyObject *raw_keyring_search(PyObject *self, PyObject *args) {
         return NULL;
     }
     /* keyctl_search returns a long (why?!) => no assertion needed */
-    return PyLong_FromLong((long) serial);
+    return PyLong_FromLong(serial);
 }
 
 PyDoc_STRVAR(raw_keyctl_join_session_keyring_doc,
