@@ -58,6 +58,15 @@ do {                                                                        \
     }                                                                       \
 } while (0)
 
+/* Let s point to a nul terminated (\0) string */
+#define nul_terminate(s)                                                    \
+char s ## _nul[s ## _len + 1];                                              \
+if ((s) != NULL) {                                                          \
+    memcpy(s ## _nul, (s), s ## _len);                                      \
+    s ## _nul[s ## _len] = '\0';                                            \
+    (s) = s ## _nul;                                                        \
+}
+
 PyDoc_STRVAR(raw_add_key_doc,
 "add_key(type, description, payload, ringid) -> serial\n\
 \n\
@@ -85,6 +94,9 @@ static PyObject *raw_add_key(PyObject *self, PyObject *args) {
     assert_no_embedded_nul(type);
     assert_no_embedded_nul(description);
     assert_long_key(ringid);
+
+    nul_terminate(type);
+    nul_terminate(description);
     serial = add_key(type, description, payload, payload_len,
                      (key_serial_t) ringid);
     if (serial < 0) {
@@ -185,6 +197,9 @@ static PyObject *raw_keyring_search(PyObject *self, PyObject *args) {
     assert_long_key(destringid);
     assert_no_embedded_nul(type);
     assert_no_embedded_nul(description);
+
+    nul_terminate(type);
+    nul_terminate(description);
     serial = keyctl_search((key_serial_t) ringid, type, description,
                            (key_serial_t) destringid);
     if (serial < 0) {
@@ -211,6 +226,8 @@ PyObject *raw_keyctl_join_session_keyring(PyObject *self, PyObject *args) {
         return NULL;
     }
     assert_no_embedded_nul(name);
+
+    nul_terminate(name);
     serial = keyctl_join_session_keyring(name);
     if (serial < 0) {
         PyErr_SetFromErrno(PyExc_OSError);
