@@ -1,5 +1,7 @@
 """A python-keyring backend for the kernel keyring."""
 
+import errno
+
 from keyring.backend import KeyringBackend
 from keyring.util import properties
 from keyring.errors import PasswordDeleteError
@@ -47,7 +49,17 @@ class KeyutilsKeyringBackend(KeyringBackend):
     def _find_key(self, service, username, missing_ok=True):
         keyring = self._keyring()
         key_id = self._key_id(service, username)
-        return keyring.search(*key_id, missing_ok=missing_ok)
+        try:
+            key = keyring.search(*key_id, missing_ok=missing_ok)
+        except OSError as e:
+            if (e.errno not in (errno.EKEYREVOKED, errno.EKEYEXPIRED)
+                    or not missing_ok):
+                raise
+            # treat a revoked (or invalidated) or expired key as non-existent
+            # Note: if an invalidated key is not yet garbage collected,
+            # errno is set to EKEYREVOKED, too
+            key = None
+        return key
 
     def get_password(self, service, username):
         key = self._find_key(service, username)
