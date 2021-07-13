@@ -12,7 +12,6 @@ pair. When calling this callable, it either
 """
 
 import getpass
-import errno
 
 from keyutils.backend import KeyutilsKeyringBackend
 
@@ -27,16 +26,7 @@ class OscKernelKeyringBackend(KeyutilsKeyringBackend):
         self._retriever_factory = retriever_factory
 
     def get_password(self, service, username, defer=True):
-        try:
-            password = super().get_password(service, username)
-        except OSError as e:
-            if e.errno not in (errno.EKEYREVOKED, errno.EKEYEXPIRED):
-                raise
-            # treat a revoked (or invalidated) or expired key as non-existent
-            # Note: if an invalidated key is not yet garbage collected,
-            # errno is set to EKEYREVOKED, too
-            password = None
-
+        password = super().get_password(service, username)
         if password is None and defer:
             return self._retriever_factory(self, service, username)
         return password

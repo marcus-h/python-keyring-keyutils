@@ -4,7 +4,7 @@ from setuptools.extension import Extension
 
 setup(
     name='keyring-keyutils',
-    version='0.1',
+    version='0.1.1',
     author='Marcus Hüwe',
     author_email='suse-tux@gmx.de',
     description='A python-keyring backend for the kernel keyring.',
