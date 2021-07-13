@@ -1,5 +1,6 @@
 import unittest
 import errno
+import sys
 
 from keyutils.keys import Key, Keyring, session_keyring
 
@@ -103,6 +104,15 @@ class TestKeys(unittest.TestCase):
         payload[0] = 0
         payload[1] = 0
         self.assertEqual(b'\x00\x00\x00', payload)
+
+    def test_key_too_large_serial(self):
+        """Ensure that a ValueError is raised if a key's serial is too large"""
+        # this testcase fails on a system where int32_t == Py_ssize_t (wrt.
+        # the range of values); on such a system we most likely have
+        # int32_t == long and, hence, everything should be fine
+        key = Key.from_serial(sys.maxsize)
+        with self.assertRaises(ValueError):
+            key.payload()
 
     def test_keyring_add_key(self):
         """Add a key to the session keyring"""
