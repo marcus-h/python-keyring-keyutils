@@ -423,6 +423,10 @@ class ContainerDecodingBuilder(AbstractContainerDecodingBuilder):
             Tag.OCTETSTRING_CONSTRUCTED: decoder.read_octetstring,
             Tag.UTF8STRING_PRIMITIVE: decoder.read_utf8string,
             Tag.UTF8STRING_CONSTRUCTED: decoder.read_utf8string,
+            Tag.PRINTABLESTRING_PRIMITIVE: decoder.read_printablestring,
+            Tag.PRINTABLESTRING_CONSTRUCTED: decoder.read_printablestring,
+            Tag.UTCTIME_PRIMITIVE: decoder.read_utctime,
+            Tag.UTCTIME_CONSTRUCTED: decoder.read_utctime,
             Tag.NULL: decoder.read_null,
             Tag.OID: decoder.read_oid
         }
