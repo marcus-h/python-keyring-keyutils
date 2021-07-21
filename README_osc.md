@@ -96,8 +96,7 @@ for an existing apiurl. In this case, the credentials are removed from the
 existing backend and are stored in the kernel keyring. For instance,
 
 ```
-marcus@linux:~> osc config https://api.opensuse.org --change-password
-Password:
+marcus@linux:~> osc config https://api.opensuse.org --select-password-store
 1) backend KeyutilsKeyringBackend (Backend provided by python-keyring)
 2) chainer ChainerBackend (Backend provided by python-keyring)
 3) fail Keyring (Backend provided by python-keyring)
@@ -112,11 +111,10 @@ marcus@linux:~>
 
 As above, the `OscKernelKeyringBackend` is selected by choosing option 4.
 
-Note that the password has to be entered again. Actually, in order to  
-simply change the password store (without entering the password again),  
-it should be sufficient to run  
-`osc config https://api.opensuse.org pass --select-password-store` but  
-there is currently a bug in osc.
+Note: the --select-password-store option only works with osc >= 0.174.0 (in  
+case of an older osc version,
+`osc config https://api.opensuse.org --change-password`  
+can be used to achieve the same (but it prompts for the password)).
 
 By default (and there is currently no way to configure this), the credentials  
 are stored in the `osc_credentials` keyring, which is a "sub" keyring of the  
